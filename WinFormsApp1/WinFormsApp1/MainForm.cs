@@ -16,17 +16,17 @@ namespace WinFormsApp1
         private const ushort DI_START_OFFSET = 0;   // Discrete Input CH0~5 (10001~10006)
         private const ushort DO_START_OFFSET = 16;  // Coil Relay CH0~5 (00017~00022)
 
-        private TcpClient _tcpClient;
-        private NetworkStream _stream;
+        private TcpClient? _tcpClient;
+        private NetworkStream? _stream;
         private ushort _transactionId = 0;
-        private Timer _pollTimer;
+        private Timer _pollTimer = null!;
 
         // UI 컨트롤
-        private TextBox txtIp;
-        private Button btnConnect;
-        private Label[] lblDiIndicators = new Label[6];
-        private Button[] btnDoControls = new Button[6];
-        private bool[] _doStatus = new bool[6];
+        private TextBox txtIp = null!;
+        private Button btnConnect = null!;
+        private readonly Label[] lblDiIndicators = new Label[6];
+        private readonly Button[] btnDoControls = new Button[6];
+        private readonly bool[] _doStatus = new bool[6];
 
         public MainForm()
         {
@@ -48,7 +48,7 @@ namespace WinFormsApp1
             btnConnect = new Button { Text = "접속", Location = new Point(220, 20), Width = 80, Height = 26 };
             btnConnect.Click += BtnConnect_Click;
 
-            grpConn.Controls.AddRange(new Control[] { lblIp, txtIp, btnConnect });
+            grpConn.Controls.AddRange([lblIp, txtIp, btnConnect]);
             this.Controls.Add(grpConn);
 
             // 2. DI 감시 영역 (FC 02)
@@ -67,7 +67,7 @@ namespace WinFormsApp1
                     BorderStyle = BorderStyle.FixedSingle,
                     Font = new Font(this.Font, FontStyle.Bold)
                 };
-                grpDi.Controls.AddRange(new Control[] { lblTitle, lblDiIndicators[i] });
+                grpDi.Controls.AddRange([lblTitle, lblDiIndicators[i]]);
             }
             this.Controls.Add(grpDi);
 
@@ -98,7 +98,7 @@ namespace WinFormsApp1
         }
 
         // --- 접속 및 해제 처리 ---
-        private void BtnConnect_Click(object sender, EventArgs e)
+        private void BtnConnect_Click(object? sender, EventArgs e)
         {
             if (_tcpClient != null && _tcpClient.Connected)
             {
@@ -156,12 +156,12 @@ namespace WinFormsApp1
             }
         }
 
-        private readonly System.Threading.SemaphoreSlim _lock = new System.Threading.SemaphoreSlim(1, 1);
+        private readonly System.Threading.SemaphoreSlim _lock = new(1, 1);
 
         // --- 데이터 폴링 (DI 6채널, DO 6채널 상태 읽기) ---
         private async Task PollDeviceDataAsync()
         {
-            if (_stream == null || !_tcpClient.Connected) return;
+            if (_stream == null || _tcpClient?.Connected != true) return;
 
             try
             {
@@ -194,7 +194,7 @@ namespace WinFormsApp1
         // --- DO 릴레이 ON/OFF 토글 (Function Code 05) ---
         private async Task ToggleDoRelayAsync(int channel)
         {
-            if (_stream == null || !_tcpClient.Connected) return;
+            if (_stream == null || _tcpClient?.Connected != true) return;
 
             ushort coilOffset = (ushort)(DO_START_OFFSET + channel);
             bool targetState = !_doStatus[channel];
@@ -216,12 +216,12 @@ namespace WinFormsApp1
         // Function Code 02: Read Discrete Inputs (DI)
         private async Task<bool[]> ReadInputsAsync(ushort startAddress, ushort count)
         {
-            byte[] pdu = new byte[]
-            {
+            byte[] pdu =
+            [
                 0x02,
                 (byte)(startAddress >> 8), (byte)(startAddress & 0xFF),
                 (byte)(count >> 8), (byte)(count & 0xFF)
-            };
+            ];
 
             byte[] fullResponse = await SendModbusRequestAsync(pdu);
 
@@ -243,12 +243,12 @@ namespace WinFormsApp1
         // Function Code 01: Read Coils (DO 상태 읽기)
         private async Task<bool[]> ReadCoilsAsync(ushort startAddress, ushort count)
         {
-            byte[] pdu = new byte[]
-            {
+            byte[] pdu =
+            [
                 0x01,
                 (byte)(startAddress >> 8), (byte)(startAddress & 0xFF),
                 (byte)(count >> 8), (byte)(count & 0xFF)
-            };
+            ];
 
             byte[] fullResponse = await SendModbusRequestAsync(pdu);
             byte dataByte = fullResponse[9];
@@ -265,12 +265,12 @@ namespace WinFormsApp1
         private async Task WriteSingleCoilAsync(ushort coilAddress, bool state)
         {
             ushort coilValue = state ? (ushort)0xFF00 : (ushort)0x0000;
-            byte[] pdu = new byte[]
-            {
+            byte[] pdu =
+            [
                 0x05,
                 (byte)(coilAddress >> 8), (byte)(coilAddress & 0xFF),
                 (byte)(coilValue >> 8), (byte)(coilValue & 0xFF)
-            };
+            ];
 
             await SendModbusRequestAsync(pdu);
         }
@@ -281,7 +281,7 @@ namespace WinFormsApp1
             await _lock.WaitAsync();
             try
             {
-                if (_stream == null || !_tcpClient.Connected)
+                if (_stream == null || _tcpClient?.Connected != true)
                     throw new InvalidOperationException("소켓이 닫혀 있습니다.");
 
                 ushort tId = ++_transactionId;
@@ -298,7 +298,7 @@ namespace WinFormsApp1
 
                 Array.Copy(pdu, 0, packet, 7, pdu.Length);
 
-                await _stream.WriteAsync(packet, 0, packet.Length);
+                await _stream.WriteAsync(packet);
 
                 // MBAP 헤더 7바이트 먼저 수신
                 byte[] headerBuffer = new byte[7];
@@ -329,12 +329,12 @@ namespace WinFormsApp1
             }
         }
 
-        private async Task ReadExactAsync(Stream stream, byte[] buffer, int count)
+        private async static Task ReadExactAsync(Stream stream, byte[] buffer, int count)
         {
             int totalRead = 0;
             while (totalRead < count)
             {
-                int read = await stream.ReadAsync(buffer, totalRead, count - totalRead);
+                int read = await stream.ReadAsync(buffer.AsMemory(totalRead, count - totalRead));
                 if (read == 0) throw new SocketException((int)SocketError.ConnectionReset);
                 totalRead += read;
             }
